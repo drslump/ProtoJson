@@ -204,6 +204,22 @@ index will map each element in the array to its corresponding field number.
     }
 
 
+## Compatible implementations
+
+### Ruby
+
+ * [ProtoJson4Ruby](https://github.com/juandebravo/ProtoJSON4Ruby) by [Juan de Bravo](https://github.com/juandebravo)
+
+### Java
+
+ * [ProtoJson](https://github.com/miceno/ProtoJson/tree/orestes) by [Miceno](https://github.com/miceno)
+
+### PHP
+
+ * [Protobuf-PHP](https://github.com/drslump/Protobuf-PHP) by myself
+
+
+
 ## Other similar implementations: PbLite
 
 After having the implementation in place and deciding a name for the project,
