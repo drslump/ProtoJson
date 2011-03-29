@@ -51,6 +51,23 @@ ProtoJson.isArray = function(o){
 };
 
 /**
+ * Helper function to obtain an object constructor from a string
+ *
+ * @param {String} name
+ * @return {Function}
+ */
+ProtoJson.constructorFromString = function(name){
+    var ctx = (window || this),
+        parts = name.split('.');
+
+    while (parts.length) {
+        ctx = ctx[parts.shift()];
+    }
+
+    return ctx;
+};
+
+/**
  * Helper function to define new message objects
  *
  * @static
@@ -71,6 +88,12 @@ ProtoJson.isArray = function(o){
  */
 ProtoJson.create = function(definition){
     function ProtoJson_Message(data){
+        var def;
+        for (field in definition.fields) if (definition.fields.hasOwnProperty(field)) {
+            def = definition.fields[field];
+            this[def[0]] = def[1] === 3 ? [] : null;
+        }
+
         if (typeof data !== 'undefined') {
             this.parse(data);
         }
@@ -151,76 +174,40 @@ ProtoJson.generateAccessors = function(obj, fields, isExtension){
 ProtoJson.Message = function() {};
 
 ProtoJson.Message.prototype = {
-    /**
-     * Exports the current message contents as a key value
-     *
-     * @param recurse {boolean} If true will export nested messages as plain objects too
-     * @return {object}
-     */
-    exportAsObject: function(recurse){
-        var k, name, result = {}, fields = this.__protojson.fields;
-        for (k in fields) if (fields.hasOwnProperty(k)) {
-            name = fields[k][0];
-            if (this.has(name)) {
-                result[name] = this.get(name);
-                if (recurse && result[name] instanceof ProtoJson.Message) {
-                    result[name] = this.exportAsObject(recurse);
-                }
-            }
-        }
-        return result;
-    },
-
-    /**
-     * Imports a key value object into the message
-     *
-     * @todo Support importing sub-messages
-     *
-     * @param object {object}
-     */
-    importFromObject: function(object){
-        var k;
-        for (k in object) if (object.hasOwnProperty(k)) {
-            this.set(k, object[k]);
-        }
-    },
 
     /**
      * Parse a ProtoJson structure in normal or compact (array) form
      *
-     * @param data {Object|Array}
+     * @param data {Object|Array|String}
      */
     parse: function(data){
         if (ProtoJson.isArray(data)) {
-            this.parseFromArray(data);
+            this.parseFromIndexed(data);
         } else if (typeof data === 'object') {
-            this.parseFromObject(data);
+            this.parseFromTagmap(data);
+        } else if (typeof data === 'string') {
+            this.parse(JSON.parse(data));
         } else {
             throw new Error('Unsuitable data to parse');
         }
+
+        return this;
     },
 
     /**
-     * Parse a ProtoJson compact structure or PbLite one
+     * Parse a ProtoJson indexed structure
      *
      * @param array {Array}
      */
-    parseFromArray: function(array){
+    parseFromIndexed: function(array){
         var i, dec, object = {};
 
         if (!array || !array.length) {
             throw new Error('Supplied data is empty');
         }
 
-        // Detect PbLite format
-        if (typeof array[0] === 'undefined' || array[0] === null) {
-            for (i=1; i<array.length; i++) {
-                if (typeof array[i] === 'undefined' || array[i] === null) {
-                    object[i] = array[i];
-                }
-            }
         // Compact format with index
-        } else if (typeof array[0] === 'string') {
+        if (typeof array[0] === 'string') {
             if (array[0].length !== array.length-1) {
                 throw new Error('Index length does not match array length');
             }
@@ -232,7 +219,7 @@ ProtoJson.Message.prototype = {
             throw new Error('Unrecognized structure');
         }
 
-        this.parseFromObject(object);
+        return this.parseFromTagmap(object);
     },
 
     /**
@@ -240,36 +227,78 @@ ProtoJson.Message.prototype = {
      *
      * @param object {Object}
      */
-    parseFromObject: function(object){
-        var k,
+    parseFromTagmap: function(object){
+        var i, k, nested, result,
             fields = this.__protojson.fields;
 
         for (k in object) if (object.hasOwnProperty(k)) {
             if (typeof fields[k] !== 'undefined') {
-                //@todo Check type of field to support sub-messages
-                this.set(k, object[k]);
+
+                if (fields[k][2] === 11) {
+                    nested = ProtoJson.constructorFromString(fields[k][3]);
+                }
+
+                if (fields[k][1] === 3) {
+                    if (!ProtoJson.isArray(object[k])) {
+                        throw new Error('Malformed message. Expected array for tag ' + k);
+                    }
+
+                    result = [];
+                    for (i=0; i<object[k].length; i++) {
+                        if (fields[k][2] === 11) {
+                            result.push( new nested(object[k][i]) );
+                        } else {
+                            result.push(object[k][i]);
+                        }
+                    }
+
+                    this.set$(k, result);
+
+                } else if (fields[k][2] === 11) {
+                    nested.parse(object[k]);
+                    this.set$(k, new nested(object[k]));
+                } else {
+                    this.set$(k, object[k]);
+                }
+
             } else {
                 this.unknown(k, object[k]);
             }
+        }
+
+        return this;
+    },
+
+    /**
+     * Imports a key value object into the message
+     *
+     * @todo Support importing sub-messages
+     *
+     * @param object {object}
+     */
+    parseFromHashmap: function(object){
+        var k;
+        for (k in object) if (object.hasOwnProperty(k)) {
+            this.set(k, object[k]);
         }
     },
 
     /**
      * Serialize a message into a ProtoJson structure
      *
-     * @param compact {boolean} If true will generate the compact form
+     * @param compact {boolean} If true will generate the indexed form
      * @return {Object|Array}
      */
     serialize: function(compact){
-        return compact ? this.serializeAsArray() : this.serializeAsObject();
+        return compact ? this.serializeAsIndexed() : this.serializeAsTagmap();
     },
 
     /**
-     * Serialize a message into a ProtoJson compact structure
+     * Serialize a message into a ProtoJson indexed structure
      *
      * @return {Array}
      */
-    serializeAsArray: function(){
+    serializeAsIndexed: function(){
         function recursive(o){
             var k, i, subarr, index = '', result = [];
 
@@ -295,7 +324,7 @@ ProtoJson.Message.prototype = {
             return result;
         }
 
-        return recursive(this.serializeAsObject());
+        return recursive(this.serializeAsTagmap());
     },
 
     /**
@@ -305,8 +334,7 @@ ProtoJson.Message.prototype = {
      *
      * @return {Object}
      */
-    serializeAsObject: function(){
-
+    serializeAsTagmap: function(){
         var k, name,
             result = {},
             fields = this.__protojson.fields;
@@ -321,10 +349,10 @@ ProtoJson.Message.prototype = {
                 if (ProtoJson.isArray(this[name])) {
                     result[k] = [];
                     for (var i=0; i<this[name].length; i++) {
-                        result[k].push( this[name].serializeAsObject() );
+                        result[k].push( this[name][i].serializeAsTagmap() );
                     }
                 } else {
-                    result[k] = this[name].serializeAsObject();
+                    result[k] = this[name].serializeAsTagmap();
                 }
             } else {
                 result[k] = this[name];
@@ -341,54 +369,25 @@ ProtoJson.Message.prototype = {
     },
 
     /**
-     * Serializes the message directly into a JSON string
+     * Exports the current message contents as a key value
      *
-     * Requires an HTML5 compatible JSON global object to be available.
-     *
-     * @param compact {boolean} - Optional, if true will use the compact format (array+index)
-     * @return {string} - A "JSON" string
+     * @param recurse {boolean} If true will export nested messages as plain objects too
+     * @return {object}
      */
-    serializeAsJson: function(compact){
-        var result = compact ? this.serializeAsArray() : this.serializeAsObject();
-        return JSON.stringify(result);
-    },
-
-    /**
-     * Serializes the message following Google Closure's PbLite format.
-     *
-     * Requires an HTML5 compatible JSON global object to be available.
-     *
-     * @param compat {boolean} - Optional, use "null" instead of empty values
-     * @return {string} - A "JSON" PbLite serialization of the message
-     */
-    serializeAsPbLite: function(compat){
-
-        compat = compat ? 'null,' : ',';
-
-        function recursive(obj){
-            var k,
-                last = 0,
-                result = ['['];
-
-            for (k in obj) if (obj.hasOwnProperty(k)) {
-                result.push(last === 0 ? '' : ',');
-                for (; last<k-1; last++) result.push(compat);
-                last = k;
-
-                result.push(
-                        typeof obj[k] === 'object'
-                        ? recursive(obj[k])
-                        : JSON.stringify(obj[k])
-                );
+    serializeAsHashmap: function(recurse){
+        var k, name, result = {}, fields = this.__protojson.fields;
+        for (k in fields) if (fields.hasOwnProperty(k)) {
+            name = fields[k][0];
+            if (this.has(name)) {
+                result[name] = this.get(name);
+                if (recurse && result[name] instanceof ProtoJson.Message) {
+                    result[name] = this.exportAsObject(recurse);
+                }
             }
-
-            result.push(']');
-
-            return result.join('');
         }
-
-        return recursive(this.serializeAsObject());
+        return result;
     },
+
 
     // Private accessors and mutators for working with field numbers
 
