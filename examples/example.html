@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+
+    <title>ProtoJson Example</title>
+
+    <!-- Include jQuery Mobile resources -->
+    <link rel="stylesheet" href="http://code.jquery.com/mobile/1.0a3/jquery.mobile-1.0a3.min.css" />
+    <script src="http://code.jquery.com/jquery-1.5.min.js"></script>
+    <script src="http://code.jquery.com/mobile/1.0a3/jquery.mobile-1.0a3.min.js"></script>
+
+    <!-- Include ProtoJson library -->
+    <script type="text/javascript" src="./../src/ProtoJson.js"></script>
+    <script type="text/javascript" src="./tutorial.pb.js"></script>
+
+</head>
+<body>
+    <script>
+
+    var APP = {
+        BOOK: null,
+
+        load: function(){
+            var person, phone;
+
+            this.BOOK = new Tutorial.AddressBook;
+
+            if (typeof localStorage !== 'undefined') {
+                var stored = localStorage['BOOK'];
+                if (stored && stored.length > 0) {
+                    this.BOOK.parse(stored);
+                    return;
+                }
+            }
+
+            // Create demo data
+            person = new Tutorial.Person();
+            person.id = 2051;
+            person.name = 'Iván Montes';
+            person.email = 'drslump@pollinimini.net';
+            phone = new Tutorial.Person.PhoneNumber();
+            phone.number = '34555909627';
+            phone.type = Tutorial.Person.PhoneType.MOBILE;
+            person.addPhone(phone);
+            phone = new Tutorial.Person.PhoneNumber();
+            phone.number = '3493909627';
+            phone.type = Tutorial.Person.PhoneType.HOME;
+            person.addPhone(phone);
+            this.BOOK.addPerson(person);
+
+            person = new Tutorial.Person();
+            person.id = 1498;
+            person.name = 'Juan de Bravo';
+            person.email = 'juan@pollinimini.net';
+            phone = new Tutorial.Person.PhoneNumber();
+            phone.number = '34555909627';
+            phone.type = Tutorial.Person.PhoneType.WORK;
+            person.addPhone(phone);
+            this.BOOK.addPerson(person);
+
+            person = new Tutorial.Person();
+            person.id = 151;
+            person.name = 'Orestes Sánchez';
+            person.email = 'orestes@pollinimini.net';
+            this.BOOK.addPerson(person);
+        },
+
+        save: function(){
+            if (typeof localStorage === 'undefined') {
+                alert('Sorry but your browser does not seem to support HTML5 storage API');
+                return;
+            }
+
+            localStorage['BOOK'] = JSON.stringify( this.BOOK.serializeAsTagmap() );
+            alert('AddressBook successfully saved');
+        },
+
+        refresh: function(){
+            $('#addressbook').empty();
+            $.each(this.BOOK.getPersonList(), function(idx, val){
+                $('#addressbook').append('<li>#' + val.getId() + ' — ' + val.getName() + '</li>');
+            });
+
+            $('#addressbook').listview('refresh');
+        },
+
+        addPerson: function(){
+            var p = new Tutorial.Person;
+            p.setId( $('#id').val() );
+            p.setName( $('#name').val() );
+            p.setEmail( $('#email').val() );
+            this.BOOK.addPerson(p);
+            this.refresh();
+
+            $('#id, #name, #email').val('');
+        },
+
+        updateExport: function(){
+            var output,
+                encoding = $('#export input[name="encoding"]:checked').val();
+
+            if (encoding === 'hashmap') {
+                output = APP.BOOK.serializeAsHashmap();
+            } else if (encoding === 'tagmap') {
+                output = APP.BOOK.serializeAsTagmap();
+            } else {
+                output = APP.BOOK.serializeAsIndexed();
+            }
+
+            $textarea = $('#export-textarea');
+            $textarea.val( JSON.stringify(output, null, '  ') );
+            setTimeout(
+                function(){ $textarea.css('height', $textarea.attr("scrollHeight")) },
+                200
+            );
+        },
+
+        updateImport: function(){
+            var data = $('#import-textarea').val(),
+                encoding = $('#import input[name="encoding"]:checked').val();
+
+            if (encoding === 'hashmap') {
+                data = JSON.parse(data);
+                this.BOOK.parseFromHashmap(data);
+            } else {
+                this.BOOK.parse(data);
+            }
+
+            this.refresh();
+        }
+    };
+
+
+    $(function(){
+        APP.load();
+        APP.refresh();
+
+        $('#export').live('pagebeforeshow', function(event, ui){
+            APP.updateExport();
+        });
+        $('#export input[name="encoding"]').change(function(){
+            APP.updateExport();
+        });
+
+
+    });
+
+
+    </script>
+
+<div id="home" data-role="page">
+	<div data-role="header">
+		<h1>ProtoJson example</h1>
+	</div>
+
+	<div data-role="content">
+		<p>
+            Address book
+        </p>
+
+        <p>
+        <ul id="addressbook" data-role="listview" data-theme="c" data-inset="true">
+        </ul>
+        </p>
+
+        <a href="#add-person" data-role="button" data-theme="b">Add Person</a>
+        <a onclick="APP.save()" data-role="button" data-theme="b">Save AddressBook</a>
+
+        <div class="ui-grid-a">
+	        <div class="ui-block-a">
+                <a href="#import" data-role="button" data-theme="e">Import</a>
+            </div>
+	        <div class="ui-block-b">
+                <a href="#export" data-role="button" data-theme="e">Export</a>
+            </div>
+        </div>
+	</div>
+
+	<div data-role="footer">
+		<h4>(c) 2011 The ProtoJson folks</h4>
+	</div>
+</div>
+
+<div id="add-person" data-role="page">
+	<div data-role="header">
+		<h1>Add a person</h1>
+	</div>
+
+	<div data-role="content">
+        <div data-role="fieldcontain">
+            <label for="id">ID:</label>
+            <input type="number" name="id" id="id" value=""  />
+        </div>
+        <div data-role="fieldcontain">
+            <label for="name">Name:</label>
+            <input type="text" name="name" id="name" value=""  />
+        </div>
+        <div data-role="fieldcontain">
+            <label for="email">E-Mail:</label>
+            <input type="email" name="email" id="email" value=""  />
+        </div>
+
+        <div data-role="fieldcontain">
+            <fieldset id="phones" data-role="controlgroup">
+                <legend for="phones">Phones</legend>
+                <ul data-role="listview" data-theme="g" data-inset="true" >
+	                <li>646909627</li>
+                </ul>
+                <a href="#add-phone" data-rel="dialog" data-role="button" data-transition="pop">Add Phone</a>
+            </fieldset>
+        </div>
+
+        <a href="#home" onclick="APP.addPerson()" data-role="button" data-theme="b">Save</a>
+    </div>
+</div>
+
+<div id="add-phone" data-role="page">
+    <div data-role="header">
+        <h1>Add phone</h1>
+    </div>
+    <div data-role="content">
+        <div data-role="fieldcontain">
+            <fieldset data-role="controlgroup" data-type="horizontal">
+    	        <legend></legend>
+             	<input type="radio" name="phonetype" id="phonetype-mobile" value="0" checked="checked" />
+             	<label for="phonetype-mobile">Mobile</label>
+
+             	<input type="radio" name="phonetype" id="phonetype-home" value="1"  />
+         	    <label for="phonetype-home">Home</label>
+
+             	<input type="radio" name="phonetype" id="phonetype-work" value="2"  />
+             	<label for="phonetype-work">Work</label>
+            </fieldset>
+        </div>
+        <div data-role="fieldcontain">
+            <label for="phonenumber">Phone number:</label>
+            <input type="phone" name="phonenumber" id="phonenumber" value=""  />
+        </div>
+
+        <a data-role="button" data-rel="back" data-theme="b">Save</a>
+    </div>
+</div>
+
+<div id="import" data-role="page">
+    <div data-role="header">
+        <h1>Import ProtoJson</h1>
+    </div>
+    <div data-role="content">
+        <div data-role="fieldcontain">
+            <fieldset data-role="controlgroup" data-type="horizontal">
+    	        <legend>Encoding</legend>
+             	<input type="radio" name="encoding" id="import-encoding-hashmap" value="hashmap" checked="checked" />
+             	<label for="import-encoding-hashmap">HashMap</label>
+
+             	<input type="radio" name="encoding" id="import-encoding-tagmap" value="tagmap"  />
+         	    <label for="import-encoding-tagmap">TagMap</label>
+
+             	<input type="radio" name="encoding" id="import-encoding-indexed" value="indexed"  />
+             	<label for="import-encoding-indexed">Indexed</label>
+            </fieldset>
+
+            <label for="import-textarea">ProtoJson</label>
+            <textarea cols="40" rows="8" name="textarea" id="import-textarea"></textarea>
+        </div>
+
+        <a href="#home" onclick="APP.updateImport()" data-role="button" data-theme="b">Import!</a>
+    </div>
+</div>
+
+
+<div id="export" data-role="page">
+    <div data-role="header">
+        <h1>Export ProtoJson</h1>
+    </div>
+    <div data-role="content">
+        <div data-role="fieldcontain">
+            <fieldset data-role="controlgroup" data-type="horizontal">
+    	        <legend>Encoding</legend>
+             	<input type="radio" name="encoding" id="encoding-hashmap" value="hashmap" checked="checked" />
+             	<label for="encoding-hashmap">HashMap</label>
+
+             	<input type="radio" name="encoding" id="encoding-tagmap" value="tagmap"  />
+         	    <label for="encoding-tagmap">TagMap</label>
+
+             	<input type="radio" name="encoding" id="encoding-indexed" value="indexed"  />
+             	<label for="encoding-indexed">Indexed</label>
+            </fieldset>
+
+            <label for="export-textarea">ProtoJson</label>
+            <textarea cols="40" rows="8" name="textarea" id="export-textarea"></textarea>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
